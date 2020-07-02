@@ -1,5 +1,5 @@
 # mopidy-mixcloudsimple
-This is simple mixcloud backend for Mopidy v3.
+This is simple Mixcloud backend for [Mopidy V3](https://github.com/mopidy/mopidy).
 
 It uses [youtube-dl](https://github.com/ytdl-org/youtube-dl) in the background to access Mixcloud.
 
