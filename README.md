@@ -1,7 +1,8 @@
 # mopidy-mixcloudsimple
 This is simple Mixcloud backend for [Mopidy V3](https://github.com/mopidy/mopidy).
-
 It uses [youtube-dl](https://github.com/ytdl-org/youtube-dl) in the background to access Mixcloud.
+
+It gives you quick access to the casts of the accounts you follow.
 
 # install
 ```
