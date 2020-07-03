@@ -28,7 +28,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
         super(MixcloudSimpleLibrary, self).__init__(backend)
         self.imageCache = {}
         self.trackCache = {}
-        self.mxaccount = config['mixcloudsimple']['account']
+        self.mxaccount = config['mixcloudsimple']['account']        
  
     def browse(self, uri):    
       refs=[]
@@ -36,8 +36,9 @@ class MixcloudSimpleLibrary(LibraryProvider):
         r =requests.get(mx_api + self.mxaccount + '/following/',timeout=10)
         jsono = json.loads(r.text)
         for p in jsono['data']:
-          url = p['url']
-          ref=Ref.directory(name=p['name'], uri=mcs_uri + p['key'])
+          accounturi = mcs_uri + p['key']
+          ref = Ref.album(name=p['name'], uri=accounturi)
+          self.imageCache[accounturi] = Image(uri=p['pictures']['320wx320h'])
           refs.append(ref)
       else:
         user = uri.strip(mcs_uri)
@@ -61,14 +62,20 @@ class MixcloudSimpleLibrary(LibraryProvider):
       return
 
     def lookup(self, uri, uris=None):
-      track=self.trackCache[uri]
-      return [track]
+      if uri in self.trackCache:
+        track=self.trackCache[uri]
+        return [track]
+      else:
+        return []
 
     def get_images(self, uris):
+      
       ret={}
       for uri in uris:
-        img=self.imageCache[uri]
-        if img is not None: ret[uri]=[img]
+        if uri in self.imageCache:
+          img=self.imageCache[uri]
+          if img is not None: 
+            ret[uri]=[img]
       return ret
 
     def search(self, query=None, uris=None, exact=False):
