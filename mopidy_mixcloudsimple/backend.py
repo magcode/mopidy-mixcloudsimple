@@ -1,11 +1,9 @@
 import logging
-import pathlib
-import threading
 import requests
 import json
 import pykka
 import youtube_dl
-from mopidy.models import Ref,Track,Album,SearchResult,Artist,Image,Playlist
+from mopidy.models import Ref,Track,Album,Image,Artist
 from mopidy.backend import *
 
 logger = logging.getLogger(__name__)
