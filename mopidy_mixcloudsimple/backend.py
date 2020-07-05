@@ -3,13 +3,16 @@ import requests
 import json
 import pykka
 import youtube_dl
+import datetime
 from mopidy.models import Ref,Track,Album,Image,Artist
 from mopidy.backend import *
 
 logger = logging.getLogger(__name__)
-mcs_uri='mixcloudsimple:'
-mcs_uri_root=mcs_uri+'root'
+mc_uri='mixcloudsimple:'
+mc_uri_root=mc_uri+'root'
+mc_uri_stream=mc_uri+'stream'
 mx_api='https://api.mixcloud.com/'
+latestShowsLabel='   Latest Shows'
 
 class MixcloudSimpleBackend(pykka.ThreadingActor, Backend):
     uri_schemes = [u'mixcloudsimple']
@@ -20,43 +23,125 @@ class MixcloudSimpleBackend(pykka.ThreadingActor, Backend):
         self.playback = MixcloudSimplePlaybackProvider(audio=audio, backend=self)        
         
 class MixcloudSimpleLibrary(LibraryProvider):
-    root_directory = Ref.directory(uri=mcs_uri_root, name='Mixcloud (Simple)')
+    root_directory = Ref.directory(uri=mc_uri_root, name='Mixcloud')
     
     def __init__(self, backend, config):
         super(MixcloudSimpleLibrary, self).__init__(backend)
         self.imageCache = {}
         self.trackCache = {}
+        self.refCache = {}
         self.mxaccount = config['mixcloudsimple']['account']        
  
     def browse(self, uri):    
       refs=[]
-      if uri==mcs_uri_root:
-        r =requests.get(mx_api + self.mxaccount + '/following/',timeout=10)
-        jsono = json.loads(r.text)
-        for p in jsono['data']:
-          accounturi = mcs_uri + p['key']
-          ref = Ref.album(name=p['name'], uri=accounturi)
-          self.imageCache[accounturi] = Image(uri=p['pictures']['320wx320h'])
-          refs.append(ref)
+      
+      # root
+      if uri==mc_uri_root:
+        # try the cache first
+        if uri in self.refCache and self.refCache[uri]:
+          refs = self.refCache[uri]
+        else:
+          refs = self.loadRootAlbumRefs()
+
+      # stream
+      elif uri==mc_uri_stream:
+        # try the cache first
+        if uri in self.refCache and self.refCache[uri]:
+          refs = self.refCache[uri]
+        else:
+          refs = self.loadTrackRefsFromStream()    
+          
+      # user tracks
       else:
-        user = uri.strip(mcs_uri)
-        r =requests.get(mx_api + user + 'cloudcasts/',timeout=10)
-        jsono = json.loads(r.text)
-        for p in jsono['data']:        
-          trackuri="mixcloudsimple:" + p['url']
-          ref=Ref.track(name=p['name'], uri=trackuri)
-          refs.append(ref)          
-          self.imageCache[trackuri] = Image(uri=p['pictures']['320wx320h'])
-          len=int(p['audio_length'])*1000
-          album=Album(name='Mixcloud')
-          artist=Artist(uri='none',name=p['user']['name'])
-          track=Track(uri=trackuri,name=p['name'],album=album,artists=[artist],length=len)
-          self.trackCache[trackuri] = track
+        # try the cache first
+        if uri in self.refCache and self.refCache[uri]:
+          refs = self.refCache[uri]
+        else:
+          refs = self.loadTrackRefsFromUser(uri)
+      return refs
+
+    def loadTrackRefsFromStream(self):
+      # get a copy of all our track ref's
+      refsCopy=[]
+      rootRefs = self.browse(mc_uri_root)
+      for rootRef in rootRefs:
+        if rootRef.uri != mc_uri_stream:
+          userTrackRefs = self.browse(rootRef.uri)
+          refsCopy = refsCopy + userTrackRefs
+
+      # sort this copy by date
+      refsCopy.sort(key=lambda x: self.trackCache[x.uri].date, reverse=True)
+      refs=[]
+      trackNo = 0
+      for ref in refsCopy:
+        originalUri = ref.uri
+        newUri = mc_uri_stream + originalUri.lstrip(mc_uri)
+        streamTrackRef = Ref.track(name=ref.name, uri=newUri)
+        refs.append(streamTrackRef)
+        # copy the Track with new URI and with new naming
+        trackNo += 1        
+        originalTrack = self.trackCache[originalUri]
+        newName = str(trackNo).zfill(2) + ". " + originalTrack.name
+        track=Track(uri=newUri,name=newName,album=originalTrack.album,artists=originalTrack.artists,length=originalTrack.length,date=originalTrack.date)
+        self.trackCache[newUri] = track
+        # copy the image
+        self.imageCache[newUri] = self.imageCache[originalUri]
+
+      return refs
+    
+    def loadRootAlbumRefs(self):
+      refs=[]
+      
+      # latest shows
+      r =requests.get(mx_api + self.mxaccount,timeout=10)
+      jsono = json.loads(r.text)
+      ref = Ref.album(name=latestShowsLabel, uri=mc_uri_stream)
+      imguri = jsono['pictures']['320wx320h']
+      self.imageCache[mc_uri_stream] = Image(uri=imguri)
+      refs.append(ref)
+      
+      # following's tracks
+      r =requests.get(mx_api + self.mxaccount + '/following/',timeout=10)
+      logger.info("Loading followings")
+      jsono = json.loads(r.text)
+      for p in jsono['data']:
+        accounturi = mc_uri + p['key']
+        ref = Ref.album(name=p['name'], uri=accounturi)
+        self.imageCache[accounturi] = Image(uri=p['pictures']['320wx320h'])
+        refs.append(ref)
+      self.refCache[mc_uri_root] = refs
+      return refs
+
+    def loadTrackRefsFromUser(self, uri):
+      refs=[]
+      user = uri.strip(mc_uri)
+      r =requests.get(mx_api + user + 'cloudcasts/',timeout=10)
+      logger.info("Loading tracks of user " + user)
+      jsono = json.loads(r.text)
+      for p in jsono['data']:        
+        trackuri=mc_uri + p['url']
+        ref=Ref.track(name=p['name'], uri=trackuri)
+        refs.append(ref)
+        self.imageCache[trackuri] = Image(uri=p['pictures']['320wx320h'])
+        len=int(p['audio_length'])*1000
+        album=Album(name='Mixcloud')
+        artist=Artist(uri='none',name=p['user']['name'])
+        dateString = p['created_time']
+        # date format from mixcloud is "2019-12-06T14:21:13Z"
+        dateObj = datetime.datetime.strptime(dateString, '%Y-%m-%dT%H:%M:%SZ')
+        dateStringMop = dateObj.strftime("%Y-%m-%d")
+        track=Track(uri=trackuri,name=p['name'],album=album,artists=[artist],length=len,date=dateStringMop)
+        self.trackCache[trackuri] = track
+      self.refCache[uri] = refs
       return refs
       
-    def refresh(self, uri=None):
-      self.imageCache = {}
-      self.trackCache = {}
+    def refresh(self, uri):
+      logger.info("refreshing for uri: " + uri)
+      if uri == mc_uri_stream:
+        # we need to flush everything
+        self.refCache = {}
+      else:
+        self.refCache[uri] = None      
       return
 
     def lookup(self, uri, uris=None):
@@ -81,7 +166,8 @@ class MixcloudSimpleLibrary(LibraryProvider):
 
 class MixcloudSimplePlaybackProvider(PlaybackProvider):
     def translate_uri(self, uri):
-      mxUrl = uri.strip(mcs_uri)
+      mxUrl = uri.lstrip(mc_uri_stream)
+      mxUrl = mxUrl.lstrip(mc_uri)
       info = youtube_dl.YoutubeDL().extract_info(
                 url=mxUrl,
                 download=False,
