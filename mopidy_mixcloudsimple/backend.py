@@ -86,8 +86,9 @@ class MixcloudSimpleLibrary(LibraryProvider):
         self.trackCache[newUri] = track
         # copy the image
         self.imageCache[newUri] = self.imageCache[originalUri]
-
-      return refs
+      
+      # lets limit to 99 tracks. Should be enough
+      return refs[:99]
     
     def loadRootAlbumRefs(self):
       refs=[]
@@ -151,8 +152,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
       else:
         return []
 
-    def get_images(self, uris):
-      
+    def get_images(self, uris):      
       ret={}
       for uri in uris:
         if uri in self.imageCache:
