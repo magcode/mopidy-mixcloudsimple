@@ -81,7 +81,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
         # copy the Track with new URI and with new naming
         trackNo += 1        
         originalTrack = self.trackCache[originalUri]
-        newName = str(trackNo).zfill(2) + ". " + originalTrack.name
+        newName = str(trackNo).zfill(2) + ". " + originalTrack.name[4:]
         track=Track(uri=newUri,name=newName,album=originalTrack.album,artists=originalTrack.artists,length=originalTrack.length,date=originalTrack.date)
         self.trackCache[newUri] = track
         # copy the image
@@ -119,7 +119,9 @@ class MixcloudSimpleLibrary(LibraryProvider):
       r =requests.get(mx_api + user + 'cloudcasts/',timeout=10)
       logger.info("Loading tracks of user " + user)
       jsono = json.loads(r.text)
-      for p in jsono['data']:        
+      trackNo = 0
+      for p in jsono['data']:
+        trackNo += 1      
         trackuri=mc_uri + p['url']
         ref=Ref.track(name=p['name'], uri=trackuri)
         refs.append(ref)
@@ -131,7 +133,9 @@ class MixcloudSimpleLibrary(LibraryProvider):
         # date format from mixcloud is "2019-12-06T14:21:13Z"
         dateObj = datetime.datetime.strptime(dateString, '%Y-%m-%dT%H:%M:%SZ')
         dateStringMop = dateObj.strftime("%Y-%m-%d")
-        track=Track(uri=trackuri,name=p['name'],album=album,artists=[artist],length=len,date=dateStringMop)
+        # synthetic name for proper sorting in Iris UI
+        synName = str(trackNo).zfill(2) + '. ' + p['name']
+        track=Track(uri=trackuri,name=synName,album=album,artists=[artist],length=len,date=dateStringMop,track_no=trackNo)
         self.trackCache[trackuri] = track
       self.refCache[uri] = refs
       return refs
