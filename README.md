@@ -9,6 +9,7 @@ It gives you quick access to the casts of the accounts you follow. It also provi
 cd ~
 git clone https://github.com/magcode/mopidy-mixcloudsimple.git
 sudo python3 pip install -e mopidy-mixcloudsimple
+# you can also try 'sudo pip3 install -e mopidy-mixcloudsimple' in case the last command does not work
 ```
 # uninstall
 ```
