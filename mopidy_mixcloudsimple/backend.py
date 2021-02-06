@@ -3,7 +3,7 @@ import requests
 import json
 import pykka
 import youtube_dl
-import datetime
+from datetime import datetime
 from mopidy.models import Ref,Track,Album,Image,Artist
 from mopidy.backend import *
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 mc_uri='mixcloudsimple:'
 mc_uri_root=mc_uri+'root'
 mc_uri_stream=mc_uri+'stream'
-mx_api='https://api.mixcloud.com/'
+mx_api='https://api.mixcloud.com'
 latestShowsLabel='   Latest Shows'
 
 class MixcloudSimpleBackend(pykka.ThreadingActor, Backend):
@@ -30,10 +30,17 @@ class MixcloudSimpleLibrary(LibraryProvider):
         self.imageCache = {}
         self.trackCache = {}
         self.refCache = {}
-        self.mxaccount = config['mixcloudsimple']['account']        
+        self.mxaccount = config['mixcloudsimple']['account']
+        self.lastRefresh = datetime.now()
  
     def browse(self, uri):    
       refs=[]
+      now = datetime.now()
+      minutesSinceLastLoad = round(abs(now-self.lastRefresh).seconds / 60)
+      # cache one day
+      if (minutesSinceLastLoad>1440):
+          self.refresh('')
+          self.lastRefresh = now
       
       # root
       if uri==mc_uri_root:
@@ -94,7 +101,8 @@ class MixcloudSimpleLibrary(LibraryProvider):
       refs=[]
       
       # latest shows
-      r =requests.get(mx_api + self.mxaccount,timeout=10)
+      r =requests.get(mx_api + "/" + self.mxaccount,timeout=10)
+      logger.info("Loading root")
       jsono = json.loads(r.text)
       ref = Ref.album(name=latestShowsLabel, uri=mc_uri_stream)
       imguri = jsono['pictures']['320wx320h']
@@ -102,7 +110,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
       refs.append(ref)
       
       # following's tracks
-      r =requests.get(mx_api + self.mxaccount + '/following/',timeout=10)
+      r =requests.get(mx_api + "/" + self.mxaccount + '/following/',timeout=10)
       logger.info("Loading followings")
       jsono = json.loads(r.text)
       for p in jsono['data']:
@@ -116,8 +124,8 @@ class MixcloudSimpleLibrary(LibraryProvider):
     def loadTrackRefsFromUser(self, uri):
       refs=[]
       user = uri.strip(mc_uri)
-      r =requests.get(mx_api + user + 'cloudcasts/',timeout=10)
       logger.info("Loading tracks of user " + user)
+      r =requests.get(mx_api + user + 'cloudcasts/',timeout=10)
       jsono = json.loads(r.text)
       trackNo = 0
       for p in jsono['data']:
@@ -131,7 +139,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
         artist=Artist(uri='none',name=p['user']['name'])
         dateString = p['created_time']
         # date format from mixcloud is "2019-12-06T14:21:13Z"
-        dateObj = datetime.datetime.strptime(dateString, '%Y-%m-%dT%H:%M:%SZ')
+        dateObj = datetime.strptime(dateString, '%Y-%m-%dT%H:%M:%SZ')
         dateStringMop = dateObj.strftime("%Y-%m-%d")
         # synthetic name for proper sorting in Iris UI
         synName = str(trackNo).zfill(2) + '. ' + p['name']
@@ -142,11 +150,11 @@ class MixcloudSimpleLibrary(LibraryProvider):
       
     def refresh(self, uri):
       logger.info("refreshing for uri: " + uri)
-      if uri == mc_uri_stream:
+      if uri == mc_uri_stream or uri == '':
         # we need to flush everything
         self.refCache = {}
       else:
-        self.refCache[uri] = None      
+        self.refCache[uri] = None
       return
 
     def lookup(self, uri, uris=None):
