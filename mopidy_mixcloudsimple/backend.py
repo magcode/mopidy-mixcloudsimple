@@ -2,7 +2,7 @@ import logging
 import requests
 import json
 import pykka
-import youtube_dl
+from yt_dlp import YoutubeDL
 from datetime import datetime
 from mopidy.models import Ref,Track,Album,Image,Artist
 from mopidy.backend import *
@@ -180,7 +180,7 @@ class MixcloudSimplePlaybackProvider(PlaybackProvider):
     def translate_uri(self, uri):
       mxUrl = uri.lstrip(mc_uri_stream)
       mxUrl = mxUrl.lstrip(mc_uri)
-      info = youtube_dl.YoutubeDL().extract_info(
+      info = YoutubeDL().extract_info(
                 url=mxUrl,
                 download=False,
                 ie_key="Mixcloud",
