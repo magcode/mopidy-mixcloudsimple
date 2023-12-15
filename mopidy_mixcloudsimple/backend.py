@@ -32,15 +32,17 @@ class MixcloudSimpleLibrary(LibraryProvider):
         self.refCache = {}
         self.mxaccount = config['mixcloudsimple']['account']
         self.lastRefresh = datetime.now()
+        self.cacheTimeMin = 60*24
  
-    def browse(self, uri):    
-      refs=[]
+    def browse(self, uri):
+      refs = []
       now = datetime.now()
-      minutesSinceLastLoad = round(abs(now-self.lastRefresh).seconds / 60)
-      # cache one day
-      if (minutesSinceLastLoad>1440):
+      minutesSinceLastLoad = round((now - self.lastRefresh).total_seconds() / 60)
+      logger.info("Uri browse (" + uri + "). Data is " + str(minutesSinceLastLoad) + " min old. Last refresh was " + self.lastRefresh.strftime("%d/%m/%Y %H:%M:%S"))
+      if (minutesSinceLastLoad > self.cacheTimeMin):
           self.refresh('')
           self.lastRefresh = now
+          logger.info("Clearing cache ... ")
       
       # root
       if uri==mc_uri_root:
@@ -104,7 +106,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
       r =requests.get(mx_api + "/" + self.mxaccount,timeout=10)
       logger.info("Loading root")
       jsono = json.loads(r.text)
-      ref = Ref.album(name=latestShowsLabel, uri=mc_uri_stream)
+      ref = Ref.directory(name=latestShowsLabel, uri=mc_uri_stream)
       imguri = jsono['pictures']['320wx320h']
       self.imageCache[mc_uri_stream] = Image(uri=imguri)
       refs.append(ref)
@@ -115,7 +117,7 @@ class MixcloudSimpleLibrary(LibraryProvider):
       jsono = json.loads(r.text)
       for p in jsono['data']:
         accounturi = mc_uri + p['key']
-        ref = Ref.album(name=p['name'], uri=accounturi)
+        ref = Ref.directory(name=p['name'], uri=accounturi)
         self.imageCache[accounturi] = Image(uri=p['pictures']['320wx320h'])
         refs.append(ref)
       self.refCache[mc_uri_root] = refs
